@@ -25,7 +25,7 @@ import (
 	"github.com/cloudflare/cfssl/info"
 	"github.com/cloudflare/cfssl/log"
 	"github.com/cloudflare/cfssl/signer"
-	"github.com/google/certificate-transparency-go"
+	ct "github.com/google/certificate-transparency-go"
 	"github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
 	"golang.org/x/net/context"
@@ -309,7 +309,8 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 	if len(req.Extensions) > 0 {
 		for _, ext := range req.Extensions {
 			oid := asn1.ObjectIdentifier(ext.ID)
-			if !profile.ExtensionWhitelist[oid.String()] {
+			// If profile's extension whitelist is configured, check if the oid appears in whitelist
+			if len(profile.ExtensionWhitelist) != 0 && !profile.ExtensionWhitelist[oid.String()] {
 				return nil, cferr.New(cferr.CertificateError, cferr.InvalidRequest)
 			}
 
@@ -394,7 +395,10 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 	// Get the AKI from signedCert.  This is required to support Go 1.9+.
 	// In prior versions of Go, x509.CreateCertificate updated the
 	// AuthorityKeyId of certTBS.
-	parsedCert, _ := helpers.ParseCertificatePEM(signedCert)
+	parsedCert, err := helpers.ParseCertificatePEM(signedCert)
+	if err != nil {
+		return nil, err
+	}
 
 	if s.dbAccessor != nil {
 		var certRecord = certdb.CertificateRecord{
@@ -467,17 +471,17 @@ func (s *Signer) SignFromPrecert(precert *x509.Certificate, scts []ct.SignedCert
 	// Create the new tbsCert from precert. Do explicit copies of any slices so that we don't
 	// use memory that may be altered by us or the caller at a later stage.
 	tbsCert := x509.Certificate{
-		SignatureAlgorithm:    precert.SignatureAlgorithm,
-		PublicKeyAlgorithm:    precert.PublicKeyAlgorithm,
-		PublicKey:             precert.PublicKey,
-		Version:               precert.Version,
-		SerialNumber:          precert.SerialNumber,
-		Issuer:                precert.Issuer,
-		Subject:               precert.Subject,
-		NotBefore:             precert.NotBefore,
-		NotAfter:              precert.NotAfter,
-		KeyUsage:              precert.KeyUsage,
-		BasicConstraintsValid: precert.BasicConstraintsValid,
+		SignatureAlgorithm:          precert.SignatureAlgorithm,
+		PublicKeyAlgorithm:          precert.PublicKeyAlgorithm,
+		PublicKey:                   precert.PublicKey,
+		Version:                     precert.Version,
+		SerialNumber:                precert.SerialNumber,
+		Issuer:                      precert.Issuer,
+		Subject:                     precert.Subject,
+		NotBefore:                   precert.NotBefore,
+		NotAfter:                    precert.NotAfter,
+		KeyUsage:                    precert.KeyUsage,
+		BasicConstraintsValid:       precert.BasicConstraintsValid,
 		IsCA:                        precert.IsCA,
 		MaxPathLen:                  precert.MaxPathLen,
 		MaxPathLenZero:              precert.MaxPathLenZero,
